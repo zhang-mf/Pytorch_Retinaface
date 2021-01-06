@@ -105,20 +105,24 @@ class RetinaFace(nn.Module):
         return landmarkhead
 
     def forward(self,inputs):
+        # inputs.shape == torch.Size([32, 3, 640, 640])
         out = self.body(inputs)
 
         # FPN
-        fpn = self.fpn(out)
+        fpn = self.fpn(out) 
+        # fpn[0].shape == torch.Size([32, 64, 80, 80])
+        # fpn[1].shape == torch.Size([32, 64, 40, 40])
+        # fpn[2].shape == torch.Size([32, 64, 20, 20])
 
         # SSH
-        feature1 = self.ssh1(fpn[0])
-        feature2 = self.ssh2(fpn[1])
-        feature3 = self.ssh3(fpn[2])
+        feature1 = self.ssh1(fpn[0]) # feature1.shape == torch.Size([32, 64, 80, 80])
+        feature2 = self.ssh2(fpn[1]) # feature2.shape == torch.Size([32, 64, 40, 40])
+        feature3 = self.ssh3(fpn[2]) # feature3.shape == torch.Size([32, 64, 20, 20])
         features = [feature1, feature2, feature3]
 
-        bbox_regressions = torch.cat([self.BboxHead[i](feature) for i, feature in enumerate(features)], dim=1)
-        classifications = torch.cat([self.ClassHead[i](feature) for i, feature in enumerate(features)],dim=1)
-        ldm_regressions = torch.cat([self.LandmarkHead[i](feature) for i, feature in enumerate(features)], dim=1)
+        bbox_regressions = torch.cat([self.BboxHead[i](feature) for i, feature in enumerate(features)], dim=1)    # torch.Size([32, 16800, 4])
+        classifications = torch.cat([self.ClassHead[i](feature) for i, feature in enumerate(features)],dim=1)     # torch.Size([32, 16800, 2])
+        ldm_regressions = torch.cat([self.LandmarkHead[i](feature) for i, feature in enumerate(features)], dim=1) # torch.Size([32, 16800, 10])
 
         if self.phase == 'train':
             output = (bbox_regressions, classifications, ldm_regressions)

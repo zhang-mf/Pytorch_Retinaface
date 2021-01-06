@@ -1,5 +1,13 @@
 # RetinaFace in PyTorch
 
+zmf:
+
+train label: x1, y1, width, height, lm1, lm1, vis, lm2, lm2, vis, lm3, lm3, vis, lm4, lm4, vis, lm5, lm5, vis, blur
+
+vis: -1/0/1 denotes the state of unvalid/indisputable/annotatable landmark respectively
+
+blur: blur score
+
 A [PyTorch](https://pytorch.org/) implementation of [RetinaFace: Single-stage Dense Face Localisation in the Wild](https://arxiv.org/abs/1905.00641). Model size only 1.7M, when Retinaface use mobilenet0.25 as backbone net. We also provide resnet50 as backbone net to get better result. The official code in Mxnet can be found [here](https://github.com/deepinsight/insightface/tree/master/RetinaFace).
 
 ## Mobile or Edge device deploy
