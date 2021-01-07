@@ -462,7 +462,7 @@ def train():
         batch_time = load_t1 - load_t0
         eta = int(batch_time * (max_iter - iteration))
 
-        if ((iteration % epoch_size) + 1) % 125 == 0 or iteration < 25:
+        if ((iteration % epoch_size) + 1) % 400 == 0 or iteration < 10:
             print('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
                 .format(epoch, max_epoch, (iteration % epoch_size) + 1,
                 epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
