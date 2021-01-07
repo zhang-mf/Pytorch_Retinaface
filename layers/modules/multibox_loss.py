@@ -28,6 +28,9 @@ class MultiBoxLoss(nn.Module):
             N: number of matched default boxes
         See: https://arxiv.org/pdf/1512.02325.pdf for more details.
     """
+    
+    # criterion = MultiBoxLoss(num_classes, 0.35, True, 0, True, 7, 0.35, False)
+    # loss_l, loss_c, loss_landm = criterion(out, priors, targets)
 
     def __init__(self, num_classes, overlap_thresh, prior_for_matching, bkg_label, neg_mining, neg_pos, neg_overlap, encode_target):
         super(MultiBoxLoss, self).__init__()
