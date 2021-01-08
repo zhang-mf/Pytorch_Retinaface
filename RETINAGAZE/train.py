@@ -14,7 +14,7 @@ import math
 from models.retinaface import RetinaFace
 
 parser = argparse.ArgumentParser(description='Retinaface Training')
-parser.add_argument('--training_dataset', default='../../data/dataset/Face/retinaface/widerface/train/label.txt', help='Training dataset directory')
+parser.add_argument('--training_dataset', default='../../../data/dataset/Face/retinaface/widerface/train/label_gaze.txt', help='Training dataset directory')
 parser.add_argument('--network', default='mobile0.25', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading') # load data to RAM, more CPU cores => more workers
 parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float, help='initial learning rate')
@@ -23,7 +23,7 @@ parser.add_argument('--resume_net', default=None, help='resume net for retrainin
 parser.add_argument('--resume_epoch', default=0, type=int, help='resume iter for retraining')
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
-parser.add_argument('--save_folder', default='../../data/checkpoints/Face/retinaface/weights/', help='Location to save checkpoint models')
+parser.add_argument('--save_folder', default='../../../data/checkpoints/Face/retinaface/weights_gaze/', help='Location to save checkpoint models')
 
 args = parser.parse_args()
 
@@ -442,20 +442,20 @@ def train():
 
         # load train data
         images, targets = next(batch_iterator)
+        # print(images.shape) # [32, 3, 640, 640]
+        # print(len(targets)) # 32
+        # print(targets[0].shape) # [2,18], 2 faces in this img, 18 == 4(bbox) + 10(lmk) + 1(have_lmk) + 2(gaze) + 1(have_gaze)
         images = images.cuda()
         targets = [anno.cuda() for anno in targets]
-        # len(targets) == 32
-        # targets[0].shape == torch.Size([num_of_faces_in_this_image, 15]), 15 == 4(bbox) + 5*2(landmark) + 1 (have_landmark)
 
         # forward
-        # torch.Size([32, 3, 640, 640]) # batch 32, image shape 3,640,640
         out = net(images)
-        # (([32, 16800, 4]), ([32, 16800, 2]), ([32, 16800, 10])) # batch 32, 16800 anchors, for each anchor predict bbox 4, class 2, landmark 10
+        # ([32, 16800, 4], [32, 16800, 2], [32, 16800, 10], [32, 16800, 2]) # batch 32, 16800 anchors, for each anchor predict bbox 4, class 2, landmark 10, gaze 2
 
         # backprop
         optimizer.zero_grad()
-        loss_l, loss_c, loss_landm = criterion(out, priors, targets)
-        loss = cfg['loc_weight'] * loss_l + loss_c + loss_landm
+        loss_l, loss_c, loss_landm, loss_gaze = criterion(out, priors, targets)
+        loss = cfg['loc_weight'] * loss_l + loss_c + loss_landm + loss_gaze
         loss.backward()
         optimizer.step()
         load_t1 = time.time()
@@ -463,9 +463,9 @@ def train():
         eta = int(batch_time * (max_iter - iteration))
 
         if ((iteration % epoch_size) + 1) % 400 == 0 or iteration < 10:
-            print('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
+            print('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} Gaze: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
                 .format(epoch, max_epoch, (iteration % epoch_size) + 1,
-                epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
+                epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), loss_landm.item(), loss_gaze.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
 
     torch.save(net.state_dict(), save_folder + cfg['name'] + '_Final.pth')
     # torch.save(net.state_dict(), save_folder + 'Final_Retinaface.pth')

@@ -56,11 +56,11 @@ class MultiBoxLoss(nn.Module):
             ground_truth (tensor): Ground truth boxes and labels for a batch,
                 shape: [batch_size,num_objs,5] (last idx is the label).
         """
-        # predictions.shape == ([32, 16800, 4]), ([32, 16800, 2]), ([32, 16800, 10])
+        # predictions.shape == ([32, 16800, 4]), ([32, 16800, 2]), ([32, 16800, 10], ([32, 16800, 2])
         # priors.shape == [16800, 4]
-        # len(targets) == 32, targets[0].shape == [num_of_faces_in_this_image, 15], 15 = 4(bbox) + 5*2(lmk) + 1(have_lmk)
+        # len(targets) == 32, targets[0].shape == [num_of_faces_in_this_image, 15], 15 = 4(bbox) + 5*2(lmk) + 1(have_lmk) + 2(gaze) + 1(have_gaze)
 
-        loc_data, conf_data, landm_data = predictions
+        loc_data, conf_data, landm_data, gaze_data = predictions
         priors = priors
         num = loc_data.size(0) # 32 batch
         num_priors = (priors.size(0)) # 16800 anchor
@@ -68,17 +68,21 @@ class MultiBoxLoss(nn.Module):
         # match priors (default boxes) and ground truth boxes
         loc_t = torch.Tensor(num, num_priors, 4)
         landm_t = torch.Tensor(num, num_priors, 10)
+        gaze_t = torch.Tensor(num, num_priors, 2)
         conf_t = torch.LongTensor(num, num_priors)
         for idx in range(num):
             truths = targets[idx][:, :4].data # bbox
-            labels = targets[idx][:, -1].data # have_landmark
+            labels = targets[idx][:, -4].data # have_landmark
             landms = targets[idx][:, 4:14].data # everyone's lmk
+            gaze_labels = targets[idx][:, -1].data # have_landmark
+            gazes  = targets[idx][:, -3:-1].data # everyone's lmk
             defaults = priors.data
-            match(self.threshold, truths, defaults, self.variance, labels, landms, loc_t, conf_t, landm_t, idx)
+            match(self.threshold, truths, defaults, self.variance, labels, landms, gaze_labels, gazes, loc_t, conf_t, landm_t, gaze_t, idx)
         if GPU:
             loc_t = loc_t.cuda()
             conf_t = conf_t.cuda()
             landm_t = landm_t.cuda()
+            gaze_t = gaze_t.cuda()
         # print(loc_t.shape) # [32, 16800, 4]
         # print(conf_t.shape) # [32, 16800]
         # print(landm_t.shape) # [32, 16800, 10]
@@ -102,6 +106,23 @@ class MultiBoxLoss(nn.Module):
         # print(landm_t.shape) # [xxxx,10]
         loss_landm = F.smooth_l1_loss(landm_p, landm_t, reduction='sum')
         # print(loss_landm) # xxxxx.xxxx
+
+
+        # GAZE LOSS
+
+        zeros = torch.tensor(0).cuda()
+        # gaze Loss (Smooth L1)
+        # Shape: [batch,num_priors,2]
+        pos2 = conf_t > zeros
+        num_pos_gaze = pos2.long().sum(1, keepdim=True)
+        N2 = max(num_pos_gaze.data.sum().float(), 1)
+        pos_idx2 = pos2.unsqueeze(pos2.dim()).expand_as(gaze_data)
+        gaze_p = gaze_data[pos_idx2].view(-1, 2)
+        # print(gaze_p.shape) # [xxxx,2]
+        gaze_t = gaze_t[pos_idx2].view(-1, 2)
+        # print(gaze_t.shape) # [xxxx,2]
+        loss_gaze = F.smooth_l1_loss(gaze_p, gaze_t, reduction='sum')
+        # print(loss_gaze) # xxxxx.xxxx
 
         
 
@@ -148,5 +169,6 @@ class MultiBoxLoss(nn.Module):
         loss_l /= N
         loss_c /= N
         loss_landm /= N1
+        loss_gaze /= N2
 
-        return loss_l, loss_c, loss_landm
+        return loss_l, loss_c, loss_landm, loss_gaze
