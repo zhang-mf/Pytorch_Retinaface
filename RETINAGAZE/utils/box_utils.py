@@ -93,7 +93,7 @@ def matrix_iof(a, b):
     return area_i / np.maximum(area_a[:, np.newaxis], 1)
 
 
-def match(threshold, truths, priors, variances, labels, landms, gaze_labels, gazes, loc_t, conf_t, landm_t, gaze_t, idx): # !!! what is labels mean, is gaze_labels needed ???
+def match(threshold, truths, priors, variances, labels, landms, gaze_labels, gazes, loc_t, conf_t, landm_t, gaze_t, idx):
     """Match each prior box with the ground truth box of the highest jaccard
     overlap, encode the bounding boxes, then return the matched indices
     corresponding to both confidence and location preds.
@@ -113,52 +113,67 @@ def match(threshold, truths, priors, variances, labels, landms, gaze_labels, gaz
         The matched indices corresponding to 1)location 2)confidence 3)landm preds.
     """
     # jaccard index
-    overlaps = jaccard(
-        truths,
-        point_form(priors)
-    )
+    overlaps = jaccard(truths, point_form(priors))
+
     # (Bipartite Matching)
-    # [1,num_objects] best prior for each ground truth
+    # [num_objects,1] best prior for each ground truth
+    # [0,0] means the 0th face's best-match anchor (overlap_value & index)
     best_prior_overlap, best_prior_idx = overlaps.max(1, keepdim=True)
 
     # ignore hard gt
     valid_gt_idx = best_prior_overlap[:, 0] >= 0.2
     best_prior_idx_filter = best_prior_idx[valid_gt_idx, :]
-    if best_prior_idx_filter.shape[0] <= 0:
+    if best_prior_idx_filter.shape[0] <= 0: 
+        # no easy faces in this image, bad training sample, rarely happens
         loc_t[idx] = 0
         conf_t[idx] = 0
         return
 
     # [1,num_priors] best ground truth for each prior
+    # [0,0] means the 0th anchor's best-match face (overlap_value & index)
     best_truth_overlap, best_truth_idx = overlaps.max(0, keepdim=True)
+
     best_truth_idx.squeeze_(0)
     best_truth_overlap.squeeze_(0)
     best_prior_idx.squeeze_(1)
     best_prior_idx_filter.squeeze_(1)
     best_prior_overlap.squeeze_(1)
     best_truth_overlap.index_fill_(0, best_prior_idx_filter, 2)  # ensure best prior
+
     # TODO refactor: index  best_prior_idx with long tensor
+
     # ensure every gt matches with its prior of max overlap
     for j in range(best_prior_idx.size(0)):     # 判别此anchor是预测哪一个boxes
-        best_truth_idx[best_prior_idx[j]] = j
-    matches = truths[best_truth_idx]            # Shape: [num_priors,4] 此处为每一个anchor对应的bbox取出来
-    conf = labels[best_truth_idx]               # Shape: [num_priors]   此处为每一个anchor对应的label取出来
-    conf[best_truth_overlap < threshold] = 0    # label as background   overlap<0.35的全部作为负样本
-    loc = encode(matches, priors, variances)
+        temp = best_prior_idx[j] # jth face's best-match prior
+        best_truth_idx[temp] = j # jth face's best-match prior's best-match face should be j
 
-    # print(landms.shape) # [1, 10] one face in this image
-    # print(best_truth_idx.shape) # [16800]
+
+
+    # NOW WE HAVE TWO(4) ARRAYS:
+    # 1,2
+    # best_truth_idx, best_truth_overlap
+    # shape [16800]
+    # best_truth_idx[0] contains the best-match face for the 0th anchor
+    # 3,4
+    # best_prior_idx_filter, best_truth_overlap
+    # shape [num_of_faces]
+    # best_prior_idx_filter[0] contains the best-match anchor for the 0th face
+
+    # truths (num_of_faces,4)
+    matches = truths[best_truth_idx]
+    # matches (16800,4), matches[0]: the 0th anchor's best-match face's bbox
+
+    # -1 means no landmark, 1 means have landmark, 0 means background
+    # labels (num_of_faces,1)
+    conf = labels[best_truth_idx]
+    conf[best_truth_overlap < threshold] = 0    # label as background   overlap<0.35的全部作为负样本
+    # conf (16800,1), conf[0]: the 0th anchor's best-match face's label
+
+    loc = encode(matches, priors, variances)
     matches_landm = landms[best_truth_idx]
     matches_gaze = gazes[best_truth_idx]
-    # print(matches_landm.shape) # [16800, 10]
     landm = encode_landm(matches_landm, priors, variances)
-    gaze = encode_gaze(matches_gaze, priors, variances)
-    # print(landm.shape) # [16800, 10]
-
-    # for k,i in enumerate(best_truth_idx):
-    #     if i != 0:
-    #         print(k,'\n', matches_landm[k], '\n', landm[k])
-    # exit()
+    gaze = encode_gaze(matches_gaze, priors, variances) # !!! TODO
     
     loc_t[idx] = loc    # [num_priors,4] encoded offsets to learn
     conf_t[idx] = conf  # [num_priors] top class label for each prior

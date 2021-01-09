@@ -31,8 +31,12 @@ class WiderFaceDetection(data.Dataset):
                 line = line.split(' ')
                 label = [float(x) for x in line]
                 labels.append(label)
-
+        
         self.words.append(labels)
+        # print(len(self.words)) # 12880 faces
+        # print(len(self.words[0])) # 1
+        # print(len(self.words[0][0])) # 20 == 4(bbox) + 5*3(landmarks) + 1()
+
 
     def __len__(self):
         return len(self.imgs_path)
@@ -42,7 +46,7 @@ class WiderFaceDetection(data.Dataset):
         height, width, _ = img.shape
 
         labels = self.words[index]
-        annotations = np.zeros((0, 18))
+        annotations = np.zeros((0, 18)) # 4bbox + 10lmk + 1have_lmk + 2gaze + 1have_gaze
         if len(labels) == 0:
             return annotations
         for idx, label in enumerate(labels):
@@ -64,17 +68,13 @@ class WiderFaceDetection(data.Dataset):
             annotation[0, 11] = label[14]  # l3_y
             annotation[0, 12] = label[16]  # l4_x
             annotation[0, 13] = label[17]  # l4_y
-            if (annotation[0, 4]<0):
-                annotation[0, 14] = -1
-            else:
-                annotation[0, 14] = 1
+            if (annotation[0, 4] < 0): annotation[0, 14] = -1 # have_no_lmk
+            else: annotation[0, 14] = 1 # have_lmk
 
             annotation[0, 15] = label[19] # label[20]  # gaze_1 # temperally use clearity (19)
             annotation[0, 16] = label[19] # label[21]  # gaze_2
-            if (annotation[0, 15]<0):
-                annotation[0, 17] = -1
-            else:
-                annotation[0, 17] = 1
+            if (annotation[0, 15] < 0): annotation[0, 17] = -1 # have_no_gaze
+            else: annotation[0, 17] = 1 # have_gaze
 
             annotations = np.append(annotations, annotation, axis=0)
         target = np.array(annotations)

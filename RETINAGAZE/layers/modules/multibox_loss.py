@@ -29,7 +29,6 @@ class MultiBoxLoss(nn.Module):
         See: https://arxiv.org/pdf/1512.02325.pdf for more details.
     """
     
-    # criterion = MultiBoxLoss(num_classes=2, overlap_thresh=0.35, prior_for_matching=True, bkg_label=0, neg_mining=True, neg_pos=7, neg_overlap=0.35, encode_target=False)
     # loss_l, loss_c, loss_landm = criterion(out, priors, targets)
 
     def __init__(self, num_classes, overlap_thresh, prior_for_matching, bkg_label, neg_mining, neg_pos, neg_overlap, encode_target):
@@ -58,7 +57,8 @@ class MultiBoxLoss(nn.Module):
         """
         # predictions.shape == ([32, 16800, 4]), ([32, 16800, 2]), ([32, 16800, 10], ([32, 16800, 2])
         # priors.shape == [16800, 4]
-        # len(targets) == 32, targets[0].shape == [num_of_faces_in_this_image, 15], 15 = 4(bbox) + 5*2(lmk) + 1(have_lmk) + 2(gaze) + 1(have_gaze)
+        # len(targets) == 32, targets[0].shape == [num_of_faces_in_this_image, 18]
+        # 18 = 4(bbox) + 5*2(lmk) + 1(have_lmk) + 2(gaze) + 1(have_gaze)
 
         loc_data, conf_data, landm_data, gaze_data = predictions
         priors = priors
@@ -72,7 +72,7 @@ class MultiBoxLoss(nn.Module):
         conf_t = torch.LongTensor(num, num_priors)
         for idx in range(num):
             truths = targets[idx][:, :4].data # bbox
-            labels = targets[idx][:, -4].data # have_landmark
+            labels = targets[idx][:, -4].data # have_landmark, <- not true, -1 no_ldmk, 0 bkgd, 1 have_ldmk
             landms = targets[idx][:, 4:14].data # everyone's lmk
             gaze_labels = targets[idx][:, -1].data # have_landmark
             gazes  = targets[idx][:, -3:-1].data # everyone's lmk
@@ -86,6 +86,7 @@ class MultiBoxLoss(nn.Module):
         # print(loc_t.shape) # [32, 16800, 4]
         # print(conf_t.shape) # [32, 16800]
         # print(landm_t.shape) # [32, 16800, 10]
+        # print(gaze_t.shape) # [32, 16800, 2]
         # exit()
 
 
@@ -107,10 +108,11 @@ class MultiBoxLoss(nn.Module):
         loss_landm = F.smooth_l1_loss(landm_p, landm_t, reduction='sum')
         # print(loss_landm) # xxxxx.xxxx
 
+        zeros = torch.tensor(0).cuda()
+        ones = torch.tensor(1).cuda()hai
 
         # GAZE LOSS
 
-        zeros = torch.tensor(0).cuda()
         # gaze Loss (Smooth L1)
         # Shape: [batch,num_priors,2]
         pos2 = conf_t > zeros

@@ -8,68 +8,78 @@ def _crop(image, boxes, labels, landm, gaze_labels, gaze, img_dim):
     height, width, _ = image.shape
     pad_image_flag = True
 
-    for _ in range(250):
-        """
-        if random.uniform(0, 1) <= 0.2:
-            scale = 1.0
-        else:
-            scale = random.uniform(0.3, 1.0)
-        """
+    for _ in range(250): # try to crop 250 times
+        # print('image shape:', image.shape)
+        # print('num of faces in this image:', boxes.shape[0])
+        # get a scale ratio
+        # 20% scale = 1.0, 80% scale = random.uniform(0.3, 1.0)
         PRE_SCALES = [0.3, 0.45, 0.6, 0.8, 1.0]
         scale = random.choice(PRE_SCALES)
+        # print('choose scale:',scale)
+        # over
+
+        # try to crop to get an roi (region of interest?)
         short_side = min(width, height)
         w = int(scale * short_side)
         h = w
-
-        if width == w:
-            l = 0
-        else:
-            l = random.randrange(width - w)
-        if height == h:
-            t = 0
-        else:
-            t = random.randrange(height - h)
+        if width == w:  l = 0
+        else:           l = random.randrange(width - w)
+        if height == h: t = 0
+        else:           t = random.randrange(height - h)
         roi = np.array((l, t, l + w, t + h))
+        # print('crop_w, crop_h:',w,h)
+        # print('roi:',roi)
+        # over
 
+        # check if there is at least one complete face box in roi
         value = matrix_iof(boxes, roi[np.newaxis])
         flag = (value >= 1)
-        if not flag.any():
-            continue
+        if not flag.any(): continue 
+        # over
 
-        centers = (boxes[:, :2] + boxes[:, 2:]) / 2
-        mask_a = np.logical_and(roi[:2] < centers, centers < roi[2:]).all(axis=1)
+        # get the face labels whose box center is in roi, save them in xxxx_t
+        # print(boxes.shape) # (3faces,4)
+        centers = (boxes[:, :2] + boxes[:, 2:]) / 2 # every box's center (3faces, 2)
+        mask_a = np.logical_and(roi[:2] < centers, centers < roi[2:]).all(axis=1) # which box is in the roi
+        # print(mask_a) # 9 faces: [False False  True  True  True  True  True  True  True]
+        face_in_roi = 0
+        for i in mask_a:
+            if i: face_in_roi +=1
+        # print('num of faces in roi:', face_in_roi) 
         boxes_t = boxes[mask_a].copy()
+        # print(boxes_t.shape) # (2faces_in_roi, 4)
         labels_t = labels[mask_a].copy()
         landms_t = landm[mask_a].copy()
-        landms_t = landms_t.reshape([-1, 5, 2])
+        landms_t = landms_t.reshape([-1, 5, 2]) # (4faces_in_roi,5,2)
         gaze_labels_t = gaze_labels[mask_a].copy()
         gazes_t = gaze[mask_a].copy()
-        gazes_t = gazes_t.reshape([-1, 1, 2])
+        # gazes_t = gazes_t.reshape([-1, 1, 2]) # gaze no need
 
-        if boxes_t.shape[0] == 0:
+        if boxes_t.shape[0] == 0: 
+            print('should never happen?')
             continue
+        # over
 
+        # crop image to image_t, adapt boxes, landms, gazes to work in image_t as xxxx_t
         image_t = image[roi[1]:roi[3], roi[0]:roi[2]]
 
+        # box coordinate in image => in image_t
         boxes_t[:, :2] = np.maximum(boxes_t[:, :2], roi[:2])
         boxes_t[:, :2] -= roi[:2]
         boxes_t[:, 2:] = np.minimum(boxes_t[:, 2:], roi[2:])
-        boxes_t[:, 2:] -= roi[:2]
+        boxes_t[:, 2:] -= roi[:2] # right
+        # over
 
-        # landm
+        # landm coordinate in image => in image_t
         landms_t[:, :, :2] = landms_t[:, :, :2] - roi[:2]
         landms_t[:, :, :2] = np.maximum(landms_t[:, :, :2], np.array([0, 0]))
         landms_t[:, :, :2] = np.minimum(landms_t[:, :, :2], roi[2:] - roi[:2])
         landms_t = landms_t.reshape([-1, 10])
+        # over
 
-        # gaze
-        gazes_t[:, :, :2] = gazes_t[:, :, :2] - roi[:2]
-        gazes_t[:, :, :2] = np.maximum(gazes_t[:, :, :2], np.array([0, 0]))
-        gazes_t[:, :, :2] = np.minimum(gazes_t[:, :, :2], roi[2:] - roi[:2])
-        gazes_t = gazes_t.reshape([-1, 2])
+        # gaze do not need to tranform here
 
-
-	# make sure that the cropped image contains at least one face > 16 pixel at training image scale
+	    # make sure that the cropped image contains at least one face > 16 pixel at training image scale
         b_w_t = (boxes_t[:, 2] - boxes_t[:, 0] + 1) / w * img_dim
         b_h_t = (boxes_t[:, 3] - boxes_t[:, 1] + 1) / h * img_dim
         mask_b = np.minimum(b_w_t, b_h_t) > 0.0
@@ -78,9 +88,8 @@ def _crop(image, boxes, labels, landm, gaze_labels, gaze, img_dim):
         landms_t = landms_t[mask_b]
         gaze_labels_t = gaze_labels_t[mask_b]
         gazes_t = gazes_t[mask_b]
-
-        if boxes_t.shape[0] == 0:
-            continue
+        if boxes_t.shape[0] == 0: continue # no face large enough
+        # over
 
         pad_image_flag = False
 
@@ -175,12 +184,12 @@ def _expand(image, boxes, fill, p):
     return image, boxes_t
 
 
-def _mirror(image, boxes, landms, gazes): # !!! NOT IMPLEMENTED ???
+def _mirror(image, boxes, landms, gazes):
     _, width, _ = image.shape
     if random.randrange(2):
         image = image[:, ::-1]
         boxes = boxes.copy()
-        boxes[:, 0::2] = width - boxes[:, 2::-2]
+        boxes[:, 0::2] = width - boxes[:, 2::-2] # change width related only
 
         # landm
         landms = landms.copy()
@@ -193,6 +202,9 @@ def _mirror(image, boxes, landms, gazes): # !!! NOT IMPLEMENTED ???
         landms[:, 4, :] = landms[:, 3, :]
         landms[:, 3, :] = tmp1
         landms = landms.reshape([-1, 10])
+
+        gazes = gazes.copy()
+        gazes[:,1] = gazes[:,1] * -1.0 # mirror yaw, keep pitch
 
     return image, boxes, landms, gazes
 
@@ -223,29 +235,32 @@ class preproc(object):
         self.img_dim = img_dim
         self.rgb_means = rgb_means
 
-    def __call__(self, image, targets): # !!! landmark changes as scale changes, but gaze is not ??? also box_utils
+    def __call__(self, image, targets):
         assert targets.shape[0] > 0, "this image does not have gt"
+        # print(image.shape) # (768, 1024, 3) an example not all
+        # print(targets.shape) # (1,18) one face in this example
 
         boxes = targets[:, :4].copy()
         labels = targets[:, -4].copy()
         landm = targets[:, 4:14].copy()
-        gaze_labels = targets[:, -1].copy() # have_landmark
-        gaze  = targets[:, -3:-1].copy() # everyone's lmk
+        gaze_labels = targets[:, -1].copy() # have_gaze
+        gaze  = targets[:, -3:-1].copy() # everyone's gaze
 
         image_t, boxes_t, labels_t, landm_t, gaze_labels_t, gaze_t, pad_image_flag = _crop(image, boxes, labels, landm, gaze_labels, gaze, self.img_dim)
+        # after cropping, we only keep the labels in the cropped image, and translate the coordinates into the cropped image
         image_t = _distort(image_t)
+        # if crop does not work, flag is True then execute the next line
         image_t = _pad_to_square(image_t,self.rgb_means, pad_image_flag)
         image_t, boxes_t, landm_t, gaze_t = _mirror(image_t, boxes_t, landm_t, gaze_t)
         height, width, _ = image_t.shape
         image_t = _resize_subtract_mean(image_t, self.img_dim, self.rgb_means)
+        
+        # int coor to float[0-1] coor
         boxes_t[:, 0::2] /= width
         boxes_t[:, 1::2] /= height
-
         landm_t[:, 0::2] /= width
         landm_t[:, 1::2] /= height
-
-        # gaze
-        # !!! NOT IMPLEMENTED ???
+        # gaze no need
 
         labels_t = np.expand_dims(labels_t, 1)
         gaze_labels_t = np.expand_dims(gaze_labels_t, 1)
